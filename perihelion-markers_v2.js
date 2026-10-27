@@ -1,0 +1,231 @@
+// ============================================================================
+// perihelion-markers.js (v2) — Orbit Viewer (base nasapsg/orbits)
+//
+// v1.2 validé : 7 marqueurs « P » posés aux périhélies exacts.
+//
+// v2 : identifie la planète par son périhélie (valeurs J2000, uniques) et
+// affiche « P Mercure », « P Vénus », etc. Identification :
+//   Mercure 0.3070, Vénus 0.7183, Terre 0.9833, Mars 1.3814,
+//   Jupiter 4.9511, Saturne 9.0150, Uranus 18.2861, Neptune 29.8063 UA.
+// Tolérance ±2 % (suffisante : les périhélies sont bien séparés).
+// Corps non identifié : « P ? » — visible en console pour identification.
+//
+// Installation : <script src="perihelion-markers.js"></script> avant </body>.
+// ============================================================================
+
+(function () {
+    'use strict';
+
+    var MARKER_COLOR  = '#ff9d5c';
+    var MARKER_PX     = 14;      // hauteur apparente du texte à l'écran (pixels)
+    var CLOSE_EPS     = 0.05;
+    var MIN_VERTS     = 24;
+    var MIN_EXTENT    = 0.5;     // UA
+    var MAX_EXTENT    = 70;      // UA
+    var ID_TOLERANCE  = 0.02;    // ± 2 % sur le périhélie pour l'identification
+    var DEBUG         = true;
+
+    // Périhélies J2000 (UA) — distance la plus proche du Soleil
+    var PLANETS = [
+        { name: 'Mercure', q: 0.3070 },
+        { name: 'Vénus',   q: 0.7183 },
+        { name: 'Terre',   q: 0.9833 },
+        { name: 'Mars',    q: 1.3814 },
+        { name: 'Jupiter', q: 4.9511 },
+        { name: 'Saturne', q: 9.0150 },
+        { name: 'Uranus',  q: 18.2861 },
+        { name: 'Neptune', q: 29.8063 }
+    ];
+
+    var markers = [];
+    var scene = null;
+    var camera = null;
+    var scheduled = false;
+    var scanned = false;
+    var disabled = false;
+
+    function info(m) { try { console.info('[perihelion] ' + m); } catch (e) {} }
+    function warn(m) { try { console.warn('[perihelion] ' + m); } catch (e) {} }
+
+    if (typeof THREE === 'undefined' || !THREE.Object3D || !THREE.Object3D.prototype) {
+        warn('THREE introuvable : script inactif (charger après include.js).');
+        return;
+    }
+
+    function isScene(o) { return o && (o.type === 'Scene' || o.isScene === true); }
+    function isCamera(o) {
+        return o && (o.isCamera === true || o.isPerspectiveCamera === true ||
+                     o.type === 'PerspectiveCamera' || o.type === 'OrthographicCamera');
+    }
+
+    function identifyPlanet(q) {
+        for (var i = 0; i < PLANETS.length; i++) {
+            if (Math.abs(q - PLANETS[i].q) / PLANETS[i].q <= ID_TOLERANCE) return PLANETS[i].name;
+        }
+        return null;
+    }
+
+    // ---- Marqueur (sprite à texture canvas, texte mesuré) -------------------
+    function buildTexture(text) {
+        var fontPx = 48;
+        var fontSpec = 'bold ' + fontPx + 'px Arial, sans-serif';
+        var canvas = document.createElement('canvas');
+        var m = canvas.getContext('2d');
+        m.font = fontSpec;
+        var metrics = m.measureText(text);
+        var ascent = metrics.actualBoundingBoxAscent || fontPx * 0.8;
+        var descent = metrics.actualBoundingBoxDescent || fontPx * 0.2;
+        var w = Math.ceil(metrics.width) + 16;
+        var h = Math.ceil(ascent + descent) + 12;
+        canvas.width = w; canvas.height = h;
+        var ctx = canvas.getContext('2d');
+        ctx.font = fontSpec;
+        ctx.fillStyle = MARKER_COLOR;
+        ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+        ctx.lineWidth = 4;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'alphabetic';
+        ctx.strokeText(text, w / 2, 8 + ascent);
+        ctx.fillText(text, w / 2, 8 + ascent);
+        var texture = (typeof THREE.CanvasTexture === 'function')
+            ? new THREE.CanvasTexture(canvas) : new THREE.Texture(canvas);
+        texture.needsUpdate = true;
+        return { texture: texture, aspect: w / h, texToText: h / (ascent + descent) };
+    }
+
+    function buildSprite(text) {
+        var t = buildTexture(text);
+        var material = new THREE.SpriteMaterial({
+            map: t.texture, transparent: true, depthTest: false, depthWrite: false
+        });
+        var s = new THREE.Sprite(material);
+        s.name = 'perihelionMarker';
+        s.userData.aspect = t.aspect;
+        s.userData.texToText = t.texToText;
+        try { s.raycast = function () {}; } catch (e) {}
+        return s;
+    }
+
+    // ---- Détection et pose des marqueurs ------------------------------------
+    function analyseGeometry(attr) {
+        var n = attr.count;
+        if (n < MIN_VERTS) return null;
+        var a = new THREE.Vector3().fromBufferAttribute(attr, 0);
+        var b = new THREE.Vector3().fromBufferAttribute(attr, n - 1);
+        var min = new THREE.Vector3(Infinity, Infinity, Infinity);
+        var max = new THREE.Vector3(-Infinity, -Infinity, -Infinity);
+        var v = new THREE.Vector3();
+        var bestD = Infinity, bestI = -1;
+        for (var i = 0; i < n; i++) {
+            v.fromBufferAttribute(attr, i);
+            min.min(v); max.max(v);
+            var d = v.lengthSq();
+            if (d < bestD) { bestD = d; bestI = i; }
+        }
+        var size = Math.max(max.x - min.x, max.y - min.y, max.z - min.z);
+        if (!(size >= MIN_EXTENT && size <= MAX_EXTENT)) return null;
+        if (a.distanceTo(b) >= CLOSE_EPS * size) return null;
+        return { index: bestI, periAU: Math.sqrt(bestD), extent: size };
+    }
+
+    function scanOrbits() {
+        scene.traverse(function (o) {
+            var g = o.geometry;
+            if (!g || !g.attributes || !g.attributes.position) return;
+            if (markers.some(function (mk) { return mk.mesh === o; })) return;
+            var res = analyseGeometry(g.attributes.position);
+            if (!res) return;
+            var planet = identifyPlanet(res.periAU);
+            var label = planet ? ('P ' + planet) : 'P ?';
+            var sprite = buildSprite(label);
+            scene.add(sprite);
+            markers.push({ sprite: sprite, mesh: o, localIndex: res.index,
+                          periAU: res.periAU, planet: planet });
+            info('marqueur posé : « ' + label + ' »  (périhélie ' + res.periAU.toFixed(3) +
+                 ' UA, emprise ' + res.extent.toFixed(2) + ' AU)' +
+                 (planet ? '' : '  [NON IDENTIFIÉ — comparer console]'));
+        });
+        info(markers.length + ' marqueur(s) de périhélie actifs.');
+        scanned = true;
+    }
+
+    // ---- Mise à jour par image -----------------------------------------------
+    var _wp = new THREE.Vector3();
+    var _probe = new THREE.Vector3();
+    var _probe2 = new THREE.Vector3();
+    var _m = new THREE.Matrix4();
+    var _mi = new THREE.Matrix4();
+
+    function worldHeightForPixels(worldPos, px) {
+        _probe.copy(worldPos).applyMatrix4(camera.matrixWorldInverse);
+        _probe2.copy(_probe); _probe2.y += 1;
+        _probe.applyMatrix4(camera.projectionMatrix);
+        _probe2.applyMatrix4(camera.projectionMatrix);
+        var ndc = Math.abs(_probe2.y - _probe.y);
+        if (!isFinite(ndc) || ndc < 1e-9) return null;
+        var screenH = window.innerHeight || 800;
+        return px / (ndc * (screenH / 2));
+    }
+
+    function update() {
+        if (!camera.matrixWorldInverse || !camera.projectionMatrix) return;
+        var pm = scene.matrixWorld;
+        if (!pm) return;
+        _m.copy(pm);
+        var e = _m.elements;
+        var parentScale = Math.sqrt(e[0] * e[0] + e[1] * e[1] + e[2] * e[2]);
+        if (!isFinite(parentScale) || parentScale <= 0) parentScale = 1;
+        _mi.copy(_m);
+        if (typeof _mi.invert === 'function') _mi.invert();
+        else if (typeof _mi.getInverse === 'function') _mi.getInverse(_m);
+
+        for (var i = 0; i < markers.length; i++) {
+            var mk = markers[i];
+            var attr = mk.mesh.geometry.attributes.position;
+            _wp.fromBufferAttribute(attr, mk.localIndex)
+               .applyMatrix4(mk.mesh.matrixWorld);
+            var texToText = mk.sprite.userData.texToText || 1.7;
+            var worldH = worldHeightForPixels(_wp, MARKER_PX * texToText);
+            if (worldH === null) { mk.sprite.visible = false; continue; }
+            mk.sprite.visible = true;
+            _wp.applyMatrix4(_mi);
+            mk.sprite.position.copy(_wp);
+            var localH = worldH / parentScale;
+            mk.sprite.scale.set(localH * mk.sprite.userData.aspect, localH, 1);
+        }
+    }
+
+    // ---- Accroche -------------------------------------------------------------
+    var proto = THREE.Object3D.prototype;
+    if (typeof proto.updateMatrixWorld !== 'function' || proto.__perihelionHook) {
+        warn('hook indisponible : script inactif.');
+        return;
+    }
+    var original = proto.updateMatrixWorld;
+    proto.__perihelionHook = true;
+
+    proto.updateMatrixWorld = function (force) {
+        if (!disabled) {
+            try {
+                var o = this;
+                if (scene === null && isScene(o)) {
+                    scene = o;
+                    if (!scheduled) {
+                        scheduled = true;
+                        setTimeout(function () {
+                            try { scanOrbits(); } catch (err) { warn('scan : ' + err); }
+                        }, 800);
+                    }
+                } else if (isCamera(o)) {
+                    camera = o;
+                } else if (o === scene && scene && camera && scanned) {
+                    update();
+                }
+            } catch (err) {
+                disabled = true;
+                warn('erreur, marqueurs désactivés : ' + (err && err.message ? err.message : err));
+            }
+        }
+        return original.apply(this, arguments);
+    };
+})();

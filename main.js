@@ -21459,7 +21459,8 @@ JPL.TimeIntervals = {
 	THREE_MONTHS: 8,
 	SIX_MONTHS: 9,
 	YEAR: 10,
-	SIXHOUR: 11
+	SIXHOUR: 11,
+	MARS_YEAR: 12
 };
 
 JPL.timeIntervalToText = function(interval) {
@@ -21488,6 +21489,8 @@ JPL.timeIntervalToText = function(interval) {
 			return "6 Months";
 		case JPL.TimeIntervals.YEAR:
 			return "1 Year";
+		case JPL.TimeIntervals.MARS_YEAR:
+			return "1 Martian Year (687 days)";
 		default:
 			return "---";
 	}
@@ -21675,6 +21678,9 @@ JPL.IntervalTimeBasedTickController = function(config) {
 					break;
 				case JPL.TimeIntervals.YEAR:
 					this.tickJulian += useDirection * 365.0;
+					break;
+				case JPL.TimeIntervals.MARS_YEAR:
+					this.tickJulian += useDirection * 687.0;
 					break;
 			}
 

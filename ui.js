@@ -6,6 +6,7 @@ if (navigator.appName == 'Microsoft Internet Explorer' || (navigator.appName == 
     $("#floating-screenshot").css("display", "none");
 }
 
+function info(msg) { try { console.info('[vernal-axis-label] ' + msg); } catch (e) {} }
 
 
 var orbitViewer = null;
@@ -132,7 +133,13 @@ $( function() {
             case "1 Year":
                 interval = JPL.TimeIntervals.YEAR;
                 break;
+            case "1 Martian Year (687 days)":
+                interval = JPL.TimeIntervals.MARS_YEAR;
+		info('interval is MARS_YEAR');
+                break;
         }
+	info('interval = ' + interval);
+
         $("#interval-label").text(intervalText);
         orbitViewer.setSimulationInterval(interval);
         urlController.setSimulationInterval(interval);
@@ -629,10 +636,10 @@ $( function() {
 
     function setSystemOptionsEnabled(system, enabled) {
         if (system) {
-            //$("#" + system.getName().hashCode() + "-primary").attr("disabled", (enabled ? null : "true"));
-           // $("#" + system.getName().hashCode() + "-moons").attr("disabled", (enabled ? null : "true"));
-            //$("#" + system.getName().hashCode() + "-orbit").attr("disabled", (enabled ? null : "true"));
-            $("#" + system.getName().hashCode() + "-label").attr("disabled", (enabled ? null : "true"));
+            //$("#" + system.getName().hashCode() + "-primary"  ).attr("disabled", (enabled ? null : "true"));
+            //$("#" + system.getName().hashCode() + "-moons"    ).attr("disabled", (enabled ? null : "true"));
+            //$("#" + system.getName().hashCode() + "-orbit"    ).attr("disabled", (enabled ? null : "true"));
+              $("#" + system.getName().hashCode() + "-label"    ).attr("disabled", (enabled ? null : "true"));
             //$("#" + system.getName().hashCode() + "-droplines").attr("disabled", (enabled ? null : "true"));
         }
     }
@@ -655,25 +662,25 @@ $( function() {
         optionsContainer.append($("<div/>").addClass("system-options-primary").append(createSystemOptionsCheck(system.getName(), true, system.getName().hashCode() + "-primary", function(evt) {
 
             if (this.checked) {
-                $("#" + system.getName().hashCode() + "-moons").attr("disabled", null);
-                $("#" + system.getName().hashCode() + "-orbit").attr("disabled", null);
-                $("#" + system.getName().hashCode() + "-label").attr("disabled", null);
+                $("#" + system.getName().hashCode() + "-moons"    ).attr("disabled", null);
+                $("#" + system.getName().hashCode() + "-orbit"    ).attr("disabled", null);
+                $("#" + system.getName().hashCode() + "-label"    ).attr("disabled", null);
                 $("#" + system.getName().hashCode() + "-droplines").attr("disabled", null);
 
-                system.setMoonsVisible($("#" + system.getName().hashCode() + "-moons").prop("checked"));
-                system.setOrbitVisible($("#" + system.getName().hashCode() + "-orbit").prop("checked"));
-                system.setBodyLabelVisible($("#" + system.getName().hashCode() + "-label").prop("checked"));
+             // system.setMoonsVisible         ($("#" + system.getName().hashCode() + "-moons"    ).prop("checked"));
+                system.setOrbitVisible         ($("#" + system.getName().hashCode() + "-orbit"    ).prop("checked"));
+                system.setBodyLabelVisible     ($("#" + system.getName().hashCode() + "-label"    ).prop("checked"));
                 system.setOrbitDropLinesVisible($("#" + system.getName().hashCode() + "-droplines").prop("checked"));
 
             } else {
-                $("#" + system.getName().hashCode() + "-moons").attr("disabled", "true");
-                $("#" + system.getName().hashCode() + "-orbit").attr("disabled", "true");
-                $("#" + system.getName().hashCode() + "-label").attr("disabled", "true");
+                $("#" + system.getName().hashCode() + "-moons"    ).attr("disabled", "true");
+                $("#" + system.getName().hashCode() + "-orbit"    ).attr("disabled", "true");
+                $("#" + system.getName().hashCode() + "-label"    ).attr("disabled", "true");
                 $("#" + system.getName().hashCode() + "-droplines").attr("disabled", "true");
 
-                system.setMoonsVisible(false);
-                system.setOrbitVisible(false);
-                system.setBodyLabelVisible(false);
+                system.setMoonsVisible         (false);
+                system.setOrbitVisible         (false);
+                system.setBodyLabelVisible     (false);
                 system.setOrbitDropLinesVisible(false);
             }
 
