@@ -25,6 +25,20 @@
 
     var SCRIPT_VERSION = 'v3.3';
 
+    //----------------- BEGIN LOG VERSION
+    const currentScript = document.currentScript;
+ 
+    if (currentScript && currentScript.src) {
+    // Parse the full URL to get the filename
+        const scriptUrl = new URL(currentScript.src);
+        const fullPath = scriptUrl.pathname;                // e.g., "/js/app.js"
+        const fileName = fullPath.split('/').pop();         // e.g., "app.js"
+
+        console.info("[load] "+ fileName + " " + SCRIPT_VERSION);  // Output: "app.js"
+    } else {
+        console.warn("Could not determine script filename (inline or unsupported browser).");
+    }
+
     // Enregistrement + journal au chargement (convention maison, cf. overlay) :
     //   window.__scriptVersions['perihelion-markers.js'] = 'v3.2'
     //   → console : [load] perihelion-markers.js v3.2
@@ -33,6 +47,7 @@
         window.__scriptVersions['perihelion-markers.js'] = SCRIPT_VERSION;
         try { console.info('[load] perihelion-markers.js ' + SCRIPT_VERSION); } catch (e) {}
     })();
+    //----------------- END LOG VERSION
 
     var MARKER_COLOR  = '#ff9d5c';
     var DOT_RADIUS_PX = 7;       // rayon du point en pixels de texture

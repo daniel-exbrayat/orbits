@@ -76,6 +76,16 @@
 (function () {
   'use strict';
 
+    var SCRIPT_VERSION = 'v10.0';
+
+    // Enregistrement + journal au chargement (convention maison, cf. overlay) :
+    //   window.__scriptVersions['vernal-axis-label.js'] = 'v10.0'
+    //   → console : [load] vernal-axis-label.js v10.0
+    (function () {
+        window.__scriptVersions = window.__scriptVersions || {};
+        window.__scriptVersions['vernal-axis-label.js'] = SCRIPT_VERSION;
+        try { console.info('[load] vernal-axis-label.js ' + SCRIPT_VERSION); } catch (e) {}
+    })();
   // --------------------------- Configuration ---------------------------
 
   var LABEL_TEXT = 'Axe des équinoxes (direction du Point vernal \u2648)'; // \u2648 = symbole du Bélier (♈)
